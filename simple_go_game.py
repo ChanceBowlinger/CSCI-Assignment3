@@ -6,6 +6,7 @@ white score :
 consecutive passes : -- if 2 passes reach game stops
 move number : 
 message : -- game result/ if illegal move is made
+message Types : -- MOVE; PASS; RESET; QUIT
 '''
 
 from random import randrange
@@ -194,8 +195,14 @@ def apply_move(board, move, color):
     if captured:
         print(f'{color_name(board, color)} captured {captured} stone(s).')
 
+    
+
     return True
 
+
+def apply_pass(board, color):
+    current_player = opposite_color(board, current_player)
+ 
 
 
 def calculate_score(board):
