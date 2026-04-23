@@ -10,7 +10,7 @@ class Node:
         self.is_connected = False
         self.connected_to = None
         self.game_color = None
-        self.game = None
+        self.game_state: simple_go_game.GoGame = None
 
     def connect_to(self, other_node=None):
         if other_node:
@@ -39,11 +39,11 @@ class Node:
                 # If color is stating color, follow up with first move
         pass
 
-    def start_game(self, opponent_node, color, board_size=5):
+    def start_game(self, opponent_node, color, board_size=9):
         self.is_connected = True
         self.connected_to = opponent_node
         self.game_color = color
-        self.game = simple_go_game.create_game_state(board_size)
+        self.game_state = simple_go_game.create_game_state(board_size)
         # Connect socket to neighbor?
 
     def send_move(self, move):
@@ -51,13 +51,29 @@ class Node:
             message = message(message_type=message_type.MAKE_MOVE, sent_by=self.node_id, content=...)
             # Send the move to the connected node (implementation of sending message is not shown)
 
+    def type_move(self):
+        # Terminal command to type move and capture as string
+        # Validate move
+        # Update game state based on move
+        # call send_move() to send move to opponent
+
+        pass
+
     def receive_move(self, move):
         # Update game state based on the received move
-        pass
+        self.game_state = simple_go_game.handle_move(self.game_state, move)
+
+        # Check if the game is over after the move
+        if self.game_state.game_over:
+            self.end_game()
+
+        # If game is not over, make another move
+        self.type_move()
 
     def end_game(self):
         # Game state flag that indicates game is over, and no more moves can be made
-        # Clear game state, update skill rating, and disconnect from opponent
+        # Determine if this node won or lost and update skill rating accordingly
+        # Clear game state and disconnect from opponent
         pass
 
     def get_new_neighbors(self):
