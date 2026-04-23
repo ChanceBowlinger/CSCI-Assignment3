@@ -11,11 +11,14 @@ class message_type(Enum):
 
 
 class message:
-    def __init__(self, message_id, message_type: message_type, sent_by=None, TTL=1, content=None):
-        self.message_id = message_id
+    MESSAGE_ID_COUNTER = 0
+
+    def __init__(self, message_type: message_type, sent_by=None, TTL=1, content=None):
+        self.message_id = message.MESSAGE_ID_COUNTER 
         self.message_type = message_type
         self.sent_by = sent_by
         self.TTL = TTL
         self.content = content
+        message.MESSAGE_ID_COUNTER += 1
 
     
