@@ -29,6 +29,7 @@ class Node:
         # Send start game message to opponent
         message = message(message_type=message_type.START_GAME, sent_by=self.node_id, content=message_body)
 
+        # Send request to other node (implementation of sending message is not shown)
 
 
     def receive_start_game_request(self, message):
@@ -48,15 +49,15 @@ class Node:
 
     def send_move(self, move):
         if self.is_connected and self.connected_to:
-            message = message(message_type=message_type.MAKE_MOVE, sent_by=self.node_id, content=...)
+
+            # Pass message as simple dictionary for now, can be structured as a message object if needed in future
+            pass
+
+            # message = message(message_type=message_type.MAKE_MOVE, sent_by=(self.ip_address, self.port), content=...)
+
             # Send the move to the connected node (implementation of sending message is not shown)
 
     def type_move(self):
-        # Terminal command to type move and capture as string
-        # Validate move
-        # Update game state based on move
-        # call send_move() to send move to opponent
-
         # Terminal command to type move and capture as string
         while True:
             move = input(f"{self.state['current_player']} move (e.g. c3 or pass): ").strip().lower()
@@ -75,7 +76,7 @@ class Node:
                 }
 
             # Validate + apply move locally
-            response = simple_go_game.handle_move(self.state, move_msg)
+            response = simple_go_game.handle_move(self.game_state, move_msg)
 
             # If invalid → retry
             if not response["ok"]:
@@ -83,7 +84,7 @@ class Node:
                 continue
 
             # If valid move updates local state
-            self.state = response
+            self.game_state = response
 
             print("✅", response["message"])
             # simple_go_game.print_board(self.state)
@@ -92,8 +93,6 @@ class Node:
             self.send_move(move_msg)
 
             break
-
-        pass
 
     def receive_move(self, move):
         # Update game state based on the received move
@@ -140,7 +139,7 @@ class Node:
             pass
         elif message.message_type == message_type.START_GAME:
             # Handle start game logic
-            pass
+            self.receive_start_game_request(message)
         elif message.message_type == message_type.MAKE_MOVE:
             # Handle make move logic
             pass
