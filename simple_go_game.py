@@ -187,11 +187,11 @@ def handle_move(game_state: dict, move_msg: dict) -> dict:
             state["game_over"] = True
             update_scores(state)
             if state["black_score"] > state["white_score"]:
-                state["message"] = "Both players passed. Game Over. Black wins"
+                state["message"] = "Black wins"
             elif state["white_score"] > state["black_score"]:
-                state["message"] = "Both players passed. Game Over. White wins"
+                state["message"] = "White wins"
             else:
-                state["message"] = "Both players passed. Game Over. Draw"
+                state["message"] = "Draw"
         else:
             state["current_player"] = other_player(color)
 
