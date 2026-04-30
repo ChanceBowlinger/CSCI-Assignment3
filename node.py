@@ -57,6 +57,42 @@ class Node:
         # Update game state based on move
         # call send_move() to send move to opponent
 
+        # Terminal command to type move and capture as string
+        while True:
+            move = input(f"{self.state['current_player']} move (e.g. c3 or pass): ").strip().lower()
+
+            # Build move message
+            if move == "pass":
+                move_msg = {
+                    "type": "pass",
+                    "color": self.state["current_player"]
+                }
+            else:
+                move_msg = {
+                    "type": "move",
+                    "move": move,
+                    "color": self.state["current_player"]
+                }
+
+            # Validate + apply move locally
+            response = simple_go_game.handle_move(self.state, move_msg)
+
+            # If invalid → retry
+            if not response["ok"]:
+                print("❌", response["message"])
+                continue
+
+            # If valid move updates local state
+            self.state = response
+
+            print("✅", response["message"])
+            # simple_go_game.print_board(self.state)
+
+            # Send move to opponent
+            self.send_move(move_msg)
+
+            break
+
         pass
 
     def receive_move(self, move):
