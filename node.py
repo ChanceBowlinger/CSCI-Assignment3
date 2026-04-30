@@ -10,7 +10,7 @@ class Node:
         self.is_connected = False
         self.connected_to = None
         self.game_color = None
-        self.game = None
+        self.game_state: simple_go_game.GoGame = None
 
     def connect_to(self, other_node=None):
         if other_node:
@@ -29,6 +29,7 @@ class Node:
         # Send start game message to opponent
         message = message(message_type=message_type.START_GAME, sent_by=self.node_id, content=message_body)
 
+        # Send request to other node (implementation of sending message is not shown)
 
 
     def receive_start_game_request(self, message):
@@ -39,25 +40,75 @@ class Node:
                 # If color is stating color, follow up with first move
         pass
 
-    def start_game(self, opponent_node, color, board_size=5):
+    def start_game(self, opponent_node, color, board_size=9):
         self.is_connected = True
         self.connected_to = opponent_node
         self.game_color = color
-        self.game = simple_go_game.create_game_state(board_size)
+        self.game_state = simple_go_game.create_game_state(board_size)
         # Connect socket to neighbor?
 
     def send_move(self, move):
         if self.is_connected and self.connected_to:
-            message = message(message_type=message_type.MAKE_MOVE, sent_by=self.node_id, content=...)
+
+            # Pass message as simple dictionary for now, can be structured as a message object if needed in future
+            pass
+
+            # message = message(message_type=message_type.MAKE_MOVE, sent_by=(self.ip_address, self.port), content=...)
+
             # Send the move to the connected node (implementation of sending message is not shown)
+
+    def type_move(self):
+        # Terminal command to type move and capture as string
+        while True:
+            move = input(f"{self.state['current_player']} move (e.g. c3 or pass): ").strip().lower()
+
+            # Build move message
+            if move == "pass":
+                move_msg = {
+                    "type": "pass",
+                    "color": self.state["current_player"]
+                }
+            else:
+                move_msg = {
+                    "type": "move",
+                    "move": move,
+                    "color": self.state["current_player"]
+                }
+
+            # Validate + apply move locally
+            response = simple_go_game.handle_move(self.game_state, move_msg)
+
+            # If invalid → retry
+            if not response["ok"]:
+                print("❌", response["message"])
+                continue
+
+            # If valid move updates local state
+            self.game_state = response
+
+            print("✅", response["message"])
+            # simple_go_game.print_board(self.state)
+
+            # Send move to opponent
+            self.send_move(move_msg)
+
+            break
 
     def receive_move(self, move):
         # Update game state based on the received move
-        pass
+        self.game_state = simple_go_game.handle_move(self.game_state, move)
+
+        # Check if the game is over after the move
+        if self.game_state.game_over:
+            self.end_game()
+
+        # If game is not over, make another move
+        self.type_move()
 
     def end_game(self):
         # Game state flag that indicates game is over, and no more moves can be made
-        # Clear game state, update skill rating, and disconnect from opponent
+        # Determine if this node won or lost and update skill rating accordingly
+        # Clear game state and disconnect from opponent
         pass
 
     def get_new_neighbors(self):
@@ -88,7 +139,7 @@ class Node:
             pass
         elif message.message_type == message_type.START_GAME:
             # Handle start game logic
-            pass
+            self.receive_start_game_request(message)
         elif message.message_type == message_type.MAKE_MOVE:
             # Handle make move logic
             pass
