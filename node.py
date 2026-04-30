@@ -1,17 +1,69 @@
+import json
+import logging
+import socketserver
 from message import message, message_type
 import simple_go_game
+import socket
 
-class Node:
-    def __init__(self, central_hub):
-        self.ip_address = None
-        self.port = None
-        self.neighbors = [] # Tuples of (ip_address, port)
-        self.central_hub = central_hub
+
+class request_handler(socketserver.BaseRequestHandler):
+    
+    def __init__(self, request, client_address, node):
+        self.logger = logging.getLogger('request_handler')
+        self.logger.debug('__init__')
+        self.node : Node = node
+        socketserver.BaseRequestHandler.__init__(self, request, client_address, node)
+        return
+
+    def handle(self):
+        self.logger.debug('handle')
+
+        # Echo the back to the client
+        data = self.request.recv(1024).decode('utf-8')
+        data = json.loads(data)
+        data : message = message(**data)
+        self.node.handle_message(data)
+        self.request.send("Message received".encode('utf-8'))
+        return
+
+    def finish(self):
+        self.logger.debug('finish')
+        return socketserver.BaseRequestHandler.finish(self)
+
+class Node(socketserver.TCPServer):
+    def __init__(self, server_address, RequestHandlerClass=request_handler):
+        socketserver.TCPServer.__init__(self, server_address, RequestHandlerClass)
+        
+        self.node_id = None
+        self.ip_address = server_address[0]
+        self.port = server_address[1]
+        self.neighbors = []
         self.skill_rating = 0
         self.is_connected = False
         self.connected_to = None
         self.game_color = None
         self.game_state: simple_go_game.GoGame = None
+
+        self.central_hub = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print('Connecting to central hub...')
+        self.central_hub.connect(('localhost', 3000))
+        self.register_to_central_hub()
+
+    def register_to_central_hub(self):
+        new_message = message(message_type=message_type.CONNECT_TO_CENTRAL_HUB, sent_by=(self.ip_address, self.port))
+        print(new_message.__dict__)
+        self.central_hub.send(json.dumps(new_message.__dict__).encode('utf-8'))
+        response = self.central_hub.recv(1024)
+
+        print('Response from central hub:', response.decode('utf-8'))
+
+    def send_message(self, message: message, recipient):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(recipient[0], recipient[1])
+        s.send(json.dumps(message.__dict__).encode('utf-8'))
+        response = s.recv(1024)
+        print('Response from recipient:', response.decode('utf-8'))
+        s.close()
 
     def connect_to(self, other_node=None):
         if other_node:
@@ -188,3 +240,11 @@ class Node:
             self.receive_start_game_response(message)
         elif message.message_type == message_type.MAKE_MOVE:
             self.receive_move(message)
+            
+if __name__ == '__main__':
+    # Example of creating a node and connecting to the central hub
+    address = ('localhost', 0)  # let the kernel give us a port
+    node = Node(address, request_handler)
+    ip, port = node.server_address
+    print(f'Node is running on {ip}:{port}')
+    node.serve_forever()
