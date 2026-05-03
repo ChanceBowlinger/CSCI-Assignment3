@@ -1,6 +1,7 @@
 import socketserver
 import logging
 import json
+import threading
 
 from message import message, message_type
 
@@ -61,4 +62,12 @@ if __name__ == '__main__':
 
     logger = logging.getLogger('central_hub')
     logger.info('Central Hub is on %s:%s', ip, port)
-    server.serve_forever()
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    logger.info('Serving in background thread, press Ctrl+C to stop')
+    try:
+        while server_thread.is_alive():
+            server_thread.join(timeout=1.0)
+    except KeyboardInterrupt:
+        logger.info('Shutting down...')
+        server.shutdown()

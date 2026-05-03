@@ -1,6 +1,7 @@
 import json
 import logging
 import socketserver
+import threading
 from message import message, message_type
 import simple_go_game
 import socket
@@ -268,4 +269,6 @@ if __name__ == '__main__':
     node = Node(address, request_handler)
     ip, port = node.server_address
     print(f'Node is running on {ip}:{port}')
-    node.serve_forever()
+    server_thread = threading.Thread(target=node.serve_forever, daemon=True)
+    server_thread.start()
+    node.main_loop()
