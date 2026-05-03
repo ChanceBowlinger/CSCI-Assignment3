@@ -6,6 +6,7 @@ white score :
 consecutive passes : -- if 2 passes reach game stops
 move number : 
 message : -- game result/ if illegal move is made
+message Types : -- MOVE; PASS; RESET; QUIT
 '''
 
 
@@ -152,6 +153,13 @@ def make_response(state: dict, ok: bool) -> dict:
         "message": state["message"],
     }
 
+def is_board_full(board):
+    for row in board:
+        for cell in row:
+            if cell is None:
+                return False
+    return True
+
 
 def handle_move(game_state: dict, move_msg: dict) -> dict:
 
@@ -213,7 +221,7 @@ def handle_move(game_state: dict, move_msg: dict) -> dict:
         state["message"] = "Square already occupied"
         return make_response(state, False)
 
-    # TRIAL BOARD ... test in simulation befor commit a move in Networl
+    # TRIAL BOARD ... test in simulation befor commit a move in Network
     trial_board = deepcopy(state["board"])
     trial_board[row][col] = color
 
@@ -240,6 +248,18 @@ def handle_move(game_state: dict, move_msg: dict) -> dict:
     state["move_number"] += 1
     state["current_player"] = opponent
     update_scores(state)
+
+    if is_board_full(state["board"]):
+        state["game_over"] = True
+
+        if state["black_score"] > state["white_score"]:
+            state["message"] = "Board full. Game over. Black wins."
+        elif state["white_score"] > state["black_score"]:
+            state["message"] = "Board full. Game over. White wins."
+        else:
+            state["message"] = "Board full. Game over. Draw."
+
+        return make_response(state, True)
 
     if captured_count > 0:
         state["message"] = f"{color} played {move} and captured {captured_count} stone(s)"
@@ -288,6 +308,29 @@ def demo():
         print_board(state)
 
 
+# Testing Game State: - When PlayerWhite wins when a move is made.
+def demo2():
+    state = create_game_state(5)
+    print_board(state)
+
+    messages = [
+        {"type": "move", "move": "b2", "color": "black"},
+        {"type": "move", "move": "c2", "color": "white"},
+        {"type": "move", "move": "c1", "color": "black"},
+        {"type": "move", "move": "e5", "color": "white"},
+        {"type": "move", "move": "c3", "color": "black"},
+        {"type": "move", "move": "a5", "color": "white"},
+        {"type": "move", "move": "d2", "color": "black"}
+    ]
+
+    for msg in messages:
+        response = handle_move(state, msg)
+        state = response
+        print(response["message"])
+        print_board(state)
+
+
 if __name__ == "__main__":
-    demo()
+    # demo()
+    demo2()
 
