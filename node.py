@@ -87,6 +87,13 @@ class Node(socketserver.TCPServer):
 
 
     def receive_start_game_request(self, request):
+        # If user is already in a game, automatically decline - may be changed if a queue system is implemented.
+        if self.is_connected:
+            response_message = message(message_type=message_type.RESPOND_GAME, sent_by=(self.ip_address, self.port), content={"accepted": False})
+            self.send_message(response_message, request.sent_by)
+            print(f"Received game request from {request.sent_by} but already in a game. Automatically declined.")
+            return
+
         while True:
             response = input(f"Received game request from {request.sent_by} with board size {request.content['board_size']}. Accept? (y/n): ").strip().lower()
             if response == 'y':
@@ -119,7 +126,7 @@ class Node(socketserver.TCPServer):
             elif opponent_color == "black":
                 color = "white"
                 
-            self.start_game(message.sent_by, color, board_size=message.content.get("board_size", 5))
+            self.start_game(message.sent_by, color, board_size=message.content.get("board_size", 9))
         else:
             print(f"Game request declined by {message.sent_by}")
 
@@ -128,7 +135,10 @@ class Node(socketserver.TCPServer):
         self.connected_to = opponent_node
         self.game_color = color
         self.game_state = simple_go_game.create_game_state(board_size)
-        # Connect socket to neighbor?
+
+        # If this node is black, it goes first
+        if self.game_color == "black":
+            self.type_move()
 
     def send_move(self, move):
         if self.is_connected and self.connected_to:
@@ -166,7 +176,7 @@ class Node(socketserver.TCPServer):
             self.game_state = response
 
             print("✅", response["message"])
-            # simple_go_game.print_board(self.state)
+            simple_go_game.print_board(self.game_state)
 
             # Send move to opponent
             self.send_move(move_msg)
@@ -223,6 +233,10 @@ class Node(socketserver.TCPServer):
 
     def handle_score_request(self):
         return self.skill_rating
+    
+    def send_message(self, message, recipient):
+        # Implementation of sending message to other node (e.g. via socket)
+        pass
 
     def handle_message(self, message):
         if message.message_type == message_type.SCORE_REQUEST:

@@ -24,6 +24,16 @@
 }
 ```
 
+---
+<strong>Game End Conditions</strong>
+1. Board is full 
+2. Two consecutive passes
+
+<mark><strong>To Win: Place more stones than your Opponent
+</strong></mark>
+
+---
+
 
 <strong>Create a Game: </strong> `create_game_state(size=5)`
 
