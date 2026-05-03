@@ -234,10 +234,21 @@ class Node(socketserver.TCPServer):
     def handle_score_request(self):
         return self.skill_rating
     
-    def send_message(self, message, recipient):
-        # Implementation of sending message to other node (e.g. via socket)
-        pass
-
+    def main_loop(self):
+        while True:
+            command = input("Enter command (start_game, neighbors, rating, exit): ").strip().lower()
+            if command == "start_game":
+                self.connect_to()
+            elif command == "neighbors":
+                print("Current neighbors:", self.neighbors)
+            elif command == "rating":
+                print("Your skill rating:", self.skill_rating)
+            elif command == "exit":
+                print("Exiting...")
+                break
+            else:
+                print("Unknown command. Please try again.")
+    
     def handle_message(self, message):
         if message.message_type == message_type.SCORE_REQUEST:
             return self.handle_score_request()
