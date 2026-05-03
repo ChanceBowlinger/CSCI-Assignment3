@@ -59,7 +59,7 @@ class Node(socketserver.TCPServer):
 
     def send_message(self, message: message, recipient):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect(recipient[0], recipient[1])
+        s.connect((recipient[0], recipient[1]))
         s.send(json.dumps(message.__dict__).encode('utf-8'))
         response = s.recv(1024)
         print('Response from recipient:', response.decode('utf-8'))
@@ -80,23 +80,23 @@ class Node(socketserver.TCPServer):
         }
 
         # Send start game message to opponent
-        message = message(message_type=message_type.START_GAME, sent_by=(self.ip_address, self.port), content=message_body)
+        msg = message(message_type=message_type.START_GAME, sent_by=(self.ip_address, self.port), content=message_body)
 
         # Send request to other node (implementation of sending message is not shown)
-        self.send_message(message, opponent_node)
+        self.send_message(msg, opponent_node)
 
 
-    def receive_start_game_request(self, message):
+    def receive_start_game_request(self, request):
         while True:
-            response = input(f"Received game request from {message.sent_by} with board size {message.content['board_size']}. Accept? (y/n): ").strip().lower()
+            response = input(f"Received game request from {request.sent_by} with board size {request.content['board_size']}. Accept? (y/n): ").strip().lower()
             if response == 'y':
                 color = input("Choose your color (black/white): ").strip().lower()
                 if color in ['black', 'white']:
-                    self.start_game(message.sent_by, color, board_size=message.content['board_size'])
+                    self.start_game(request.sent_by, color, board_size=request.content['board_size'])
 
                     # Send acceptance message back to opponent
-                    response_message = message(message_type=message_type.RESPOND_GAME, sent_by=(self.ip_address, self.port), content={"accepted": True, "color": color, "board_size": message.content['board_size']})
-                    self.send_message(response_message, message.sent_by)
+                    response_message = message(message_type=message_type.RESPOND_GAME, sent_by=(self.ip_address, self.port), content={"accepted": True, "color": color, "board_size": request.content['board_size']})
+                    self.send_message(response_message, request.sent_by)
                     break
                 else:
                     print("Invalid color choice. Please choose 'black' or 'white'.")
@@ -105,7 +105,7 @@ class Node(socketserver.TCPServer):
 
                 # Send decline message back to opponent
                 response_message = message(message_type=message_type.RESPOND_GAME, sent_by=(self.ip_address, self.port), content={"accepted": False})
-                self.send_message(response_message, message.sent_by)
+                self.send_message(response_message, request.sent_by)
                 break
             else:
                 print("Invalid response. Please enter 'y' or 'n'.")
@@ -133,8 +133,8 @@ class Node(socketserver.TCPServer):
     def send_move(self, move):
         if self.is_connected and self.connected_to:
             # Wrap move in a message object and send to opponent
-            message = message(message_type=message_type.MAKE_MOVE, sent_by=(self.ip_address, self.port), content=move)
-            self.send_message(message, self.connected_to)
+            msg = message(message_type=message_type.MAKE_MOVE, sent_by=(self.ip_address, self.port), content=move)
+            self.send_message(msg, self.connected_to)
 
     def type_move(self):
         # Terminal command to type move and capture as string
@@ -223,10 +223,6 @@ class Node(socketserver.TCPServer):
 
     def handle_score_request(self):
         return self.skill_rating
-    
-    def send_message(self, message, recipient):
-        # Implementation of sending message to other node (e.g. via socket)
-        pass
 
     def handle_message(self, message):
         if message.message_type == message_type.SCORE_REQUEST:

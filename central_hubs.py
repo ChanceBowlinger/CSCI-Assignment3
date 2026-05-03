@@ -49,7 +49,7 @@ class central_hub(socketserver.TCPServer):
     def get_active_players(self, requesting_player):
         active_players = []
         for player in self.players:
-            if player.is_active() and player != requesting_player:
+            if player != requesting_player:
                 active_players.append(player)
         return active_players
 
