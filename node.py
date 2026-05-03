@@ -37,8 +37,8 @@ class Node(socketserver.TCPServer):
         socketserver.TCPServer.__init__(self, server_address, RequestHandlerClass)
         
         self.node_id = None
-        self.ip_address = server_address[0]
-        self.port = server_address[1]
+        self.ip_address = self.server_address[0]
+        self.port = self.server_address[1]
         self.neighbors = []
         self.skill_rating = 0
         self.is_connected = False
