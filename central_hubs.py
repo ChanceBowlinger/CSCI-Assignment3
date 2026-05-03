@@ -1,6 +1,8 @@
 import socketserver
 import logging
 import json
+import random
+import socket
 import threading
 
 from message import message, message_type
@@ -46,13 +48,31 @@ class central_hub(socketserver.TCPServer):
         self.players = []
         return
     
+    def ping_player(self, player):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1.0)
+            s.connect((player[0], player[1]))
+            s.close()
+            return True
+        except OSError:
+            return False
+
     # Return a list of active players connected to the central hub
     def get_active_players(self, requesting_player):
-        active_players = []
+        active, dead = [], []
         for player in self.players:
-            if player != requesting_player:
-                active_players.append(player)
-        return active_players
+            if list(player) == list(requesting_player):
+                continue
+            if self.ping_player(player):
+                active.append(player)
+            else:
+                dead.append(player)
+        for player in dead:
+            self.players.remove(player)
+        if len(active) > 5:
+            return random.sample(active, 5)
+        return active
 
 if __name__ == '__main__':
     address = ('localhost', 3000) # let the kernel give us a port

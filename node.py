@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import socketserver
 import threading
 from message import message, message_type
@@ -217,10 +218,32 @@ class Node(socketserver.TCPServer):
         self.game_color = None
         self.game_state = None
 
-    def get_new_neighbors(self):
-        # May not be exact implementation
-        new_neighbors = self.central_hub.return_new_neighbors(self.neighbors)
-        self.neighbors.extend(new_neighbors)
+    def request_neighbors(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(('localhost', 3000))
+        msg = message(message_type=message_type.NEW_NEIGHBOR, sent_by=(self.ip_address, self.port))
+        s.send(json.dumps(msg.__dict__).encode('utf-8'))
+        response = json.loads(s.recv(4096).decode('utf-8'))
+        s.close()
+        response_msg = message(**response)
+        if response_msg.message_type == message_type.NEW_NEIGHBOR_RESPONSE:
+            incoming = [list(p) for p in response_msg.content]
+            new_neighbors = [n for n in incoming if n not in self.neighbors]
+            self.neighbors = incoming
+            for neighbor in new_neighbors:
+                self.notify_neighbor(neighbor)
+
+    def notify_neighbor(self, neighbor):
+        try:
+            msg = message(message_type=message_type.NEW_NEIGHBOR, sent_by=(self.ip_address, self.port))
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(2.0)
+            s.connect((neighbor[0], neighbor[1]))
+            s.send(json.dumps(msg.__dict__).encode('utf-8'))
+            s.recv(1024)
+            s.close()
+        except OSError:
+            pass
 
     # Stretch Goal
     def compare_rating(self):
@@ -234,28 +257,70 @@ class Node(socketserver.TCPServer):
 
     def handle_score_request(self):
         return self.skill_rating
-    
-    def main_loop(self):
+
+    def _clear(self):
+        os.system('cls' if os.name == 'nt' else 'clear')
+
+    def _print_main_menu(self):
+        self._clear()
+        print(f"=== Go Game Node  [{self.ip_address}:{self.port}] ===")
+        print("1. Request new neighbors")
+        print("2. View neighbors")
+        print("3. Start game")
+        print("4. My rating")
+        print("5. Exit")
+        print()
+
+    def neighbors_menu(self):
         while True:
-            command = input("Enter command (start_game, neighbors, rating, exit): ").strip().lower()
-            if command == "start_game":
+            self._clear()
+            print("=== Neighbors ===")
+            if self.neighbors:
+                for i, n in enumerate(self.neighbors, 1):
+                    print(f"  {i}. {n[0]}:{n[1]}")
+            else:
+                print("  (no neighbors yet — use option 1 from the main menu)")
+            print()
+            print("  0. Back to main menu")
+            print()
+            choice = input("Select: ").strip()
+            if choice == '0':
+                break
+
+    def main_loop(self):
+        self._print_main_menu()
+        while True:
+            choice = input("Select: ").strip()
+            if choice == '1':
+                print("Requesting neighbors from hub...")
+                self.request_neighbors()
+                print(f"Done. {len(self.neighbors)} active neighbor(s) found.")
+                input("Press Enter to continue...")
+                self._print_main_menu()
+            elif choice == '2':
+                self.neighbors_menu()
+                self._print_main_menu()
+            elif choice == '3':
                 self.connect_to()
-            elif command == "neighbors":
-                print("Current neighbors:", self.neighbors)
-            elif command == "rating":
-                print("Your skill rating:", self.skill_rating)
-            elif command == "exit":
+                self._print_main_menu()
+            elif choice == '4':
+                print(f"Your skill rating: {self.skill_rating}")
+                input("Press Enter to continue...")
+                self._print_main_menu()
+            elif choice == '5':
                 print("Exiting...")
                 break
             else:
-                print("Unknown command. Please try again.")
+                print("Invalid choice. Try again.")
+                self._print_main_menu()
     
     def handle_message(self, message):
         if message.message_type == message_type.SCORE_REQUEST:
             return self.handle_score_request()
         elif message.message_type == message_type.NEW_NEIGHBOR:
-            # Handle new neighbor logic
-            pass
+            sender = list(message.sent_by)
+            if sender not in self.neighbors:
+                self.neighbors.append(sender)
         elif message.message_type == message_type.START_GAME:
             self.receive_start_game_request(message)
         elif message.message_type == message_type.RESPOND_GAME:
