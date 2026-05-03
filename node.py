@@ -20,8 +20,9 @@ class request_handler(socketserver.BaseRequestHandler):
     def handle(self):
         self.logger.debug('handle')
 
-        # Echo the back to the client
         data = self.request.recv(1024).decode('utf-8')
+        if not data:
+            return
         data = json.loads(data)
         data : message = message(**data)
         self.node.handle_message(data)
