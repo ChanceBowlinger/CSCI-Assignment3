@@ -224,10 +224,6 @@ class Node(socketserver.TCPServer):
     def handle_score_request(self):
         return self.skill_rating
     
-    def send_message(self, message, recipient):
-        # Implementation of sending message to other node (e.g. via socket)
-        pass
-
     def handle_message(self, message):
         if message.message_type == message_type.SCORE_REQUEST:
             return self.handle_score_request()
