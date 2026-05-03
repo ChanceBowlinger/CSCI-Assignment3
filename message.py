@@ -8,7 +8,6 @@ class message_type(int, Enum):
     START_GAME = 4
     RESPOND_GAME = 5
     MAKE_MOVE = 6
-    END_GAME = 7
 
 
 class message:
