@@ -46,6 +46,8 @@ class Node(socketserver.TCPServer):
         self.connected_to = None
         self.game_color = None
         self.game_state: simple_go_game.GoGame = None
+        self.pending_requests = [] # Store incoming game requests
+        self.move_received_event = threading.Event() # Sync turns
 
         self.central_hub = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         print('Connecting to central hub...')
@@ -88,38 +90,6 @@ class Node(socketserver.TCPServer):
         # Send request to other node (implementation of sending message is not shown)
         self.send_message(msg, opponent_node)
 
-
-    def receive_start_game_request(self, request):
-        # If user is already in a game, automatically decline - may be changed if a queue system is implemented.
-        if self.is_connected:
-            response_message = message(message_type=message_type.RESPOND_GAME, sent_by=(self.ip_address, self.port), content={"accepted": False})
-            self.send_message(response_message, request.sent_by)
-            print(f"Received game request from {request.sent_by} but already in a game. Automatically declined.")
-            return
-
-        while True:
-            response = input(f"Received game request from {request.sent_by} with board size {request.content['board_size']}. Accept? (y/n): ").strip().lower()
-            if response == 'y':
-                color = input("Choose your color (black/white): ").strip().lower()
-                if color in ['black', 'white']:
-                    self.start_game(request.sent_by, color, board_size=request.content['board_size'])
-
-                    # Send acceptance message back to opponent
-                    response_message = message(message_type=message_type.RESPOND_GAME, sent_by=(self.ip_address, self.port), content={"accepted": True, "color": color, "board_size": request.content['board_size']})
-                    self.send_message(response_message, request.sent_by)
-                    break
-                else:
-                    print("Invalid color choice. Please choose 'black' or 'white'.")
-            elif response == 'n':
-                print("Declined game request.")
-
-                # Send decline message back to opponent
-                response_message = message(message_type=message_type.RESPOND_GAME, sent_by=(self.ip_address, self.port), content={"accepted": False})
-                self.send_message(response_message, request.sent_by)
-                break
-            else:
-                print("Invalid response. Please enter 'y' or 'n'.")
-
     def receive_start_game_response(self, message):
         if message.content.get("accepted"):
             opponent_color = message.content.get("color")
@@ -139,10 +109,6 @@ class Node(socketserver.TCPServer):
         self.game_color = color
         self.game_state = simple_go_game.create_game_state(board_size)
 
-        # If this node is black, it goes first
-        if self.game_color == "black":
-            self.type_move()
-
     def send_move(self, move):
         if self.is_connected and self.connected_to:
             # Wrap move in a message object and send to opponent
@@ -150,45 +116,26 @@ class Node(socketserver.TCPServer):
             self.send_message(msg, self.connected_to)
 
     def type_move(self):
-        # Terminal command to type move and capture as string
         while True:
             move = input(f"{self.game_state['current_player']} move (e.g. c3 or pass): ").strip().lower()
 
             # Build move message
-            if move == "pass":
-                move_msg = {
-                    "type": "pass",
-                    "color": self.game_state["current_player"]
-                }
-            else:
-                move_msg = {
-                    "type": "move",
-                    "move": move,
-                    "color": self.game_state["current_player"]
-                }
+            move_msg = {
+                "type": "move" if move != "pass" else "pass",
+                "move": move,
+                "color": self.game_color
+            }
 
             # Validate + apply move locally
             response = simple_go_game.handle_move(self.game_state, move_msg)
 
-            # If invalid → retry
             if not response["ok"]:
                 print("❌", response["message"])
                 continue
 
-            # If valid move updates local state
             self.game_state = response
-
-            print("✅", response["message"])
-            simple_go_game.print_board(self.game_state)
-
-            # Send move to opponent
             self.send_move(move_msg)
-
-            # If game is over, call end_game() to update skill rating and disconnect
-            if self.game_state["game_over"]:
-                print("Game Over!")
-                self.end_game()
-
+            
             break
 
     def receive_move(self, message):
@@ -199,8 +146,7 @@ class Node(socketserver.TCPServer):
         if self.game_state["game_over"]:
             self.end_game()
 
-        # If game is not over, make another move
-        self.type_move()
+        self.move_received_event.set()
 
     def end_game(self):
         # Clear game state and disconnect from opponent
@@ -268,8 +214,9 @@ class Node(socketserver.TCPServer):
         print("1. Request new neighbors")
         print("2. View neighbors")
         print("3. Start game")
-        print("4. My rating")
-        print("5. Exit")
+        print("4. View pending game requests")
+        print("5. My rating")
+        print("6. Exit")
         print()
 
     def neighbors_menu(self):
@@ -288,33 +235,102 @@ class Node(socketserver.TCPServer):
             if choice == '0':
                 break
 
+    def start_game_menu(self):
+        """Sub-menu for starting a match with neighbors."""
+        self._clear()
+        print("=== Start a Match ===")
+        print("1. Challenge all neighbors")
+        print("2. Challenge a specific neighbor")
+        print("0. Back to main menu")
+        print()
+        
+        choice = input("Select: ").strip()
+        
+        if choice == '1':
+            print("Sending game requests to all neighbors...")
+            self.connect_to()
+            input("Requests sent. Press Enter to continue...")
+            
+        elif choice == '2':
+            if not self.neighbors:
+                print("Your neighbor list is empty. Try requesting neighbors from the hub first.")
+                input("Press Enter to continue...")
+                return
+            
+            print("\nAvailable Opponents:")
+            for i, n in enumerate(self.neighbors, 1):
+                print(f"  {i}. {n[0]}:{n[1]}")
+            
+            try:
+                idx_input = input("\nEnter the number of the opponent (0 to cancel): ").strip()
+                idx = int(idx_input)
+                
+                if 1 <= idx <= len(self.neighbors):
+                    # Convert the list [ip, port] to the required tuple (ip, port)
+                    target_tuple = tuple(self.neighbors[idx-1])
+                    print(f"Sending request to {target_tuple[0]}:{target_tuple[1]}...")
+                    self.connect_to(other_node=target_tuple)
+                    input("Request sent. Press Enter to continue...")
+                elif idx == 0:
+                    return
+                else:
+                    print("Invalid selection.")
+                    input("Press Enter to continue...")
+            except ValueError:
+                print("Error: Please enter a valid numerical index.")
+                input("Press Enter to continue...")
+
     def main_loop(self):
-        self._print_main_menu()
-        while True:
+        while not self.is_connected:
+            self._print_main_menu()
+            if self.pending_requests:
+                print(f"🔔 YOU HAVE {len(self.pending_requests)} PENDING GAME REQUEST(S)!")
+            
             choice = input("Select: ").strip()
+
             if choice == '1':
                 print("Requesting neighbors from hub...")
                 self.request_neighbors()
                 print(f"Done. {len(self.neighbors)} active neighbor(s) found.")
                 input("Press Enter to continue...")
-                self._print_main_menu()
             elif choice == '2':
                 self.neighbors_menu()
-                self._print_main_menu()
             elif choice == '3':
-                self.connect_to()
-                self._print_main_menu()
+                self.start_game_menu()
             elif choice == '4':
+                self.handle_pending_requests()
+            elif choice == '5':
                 print(f"Your skill rating: {self.skill_rating}")
                 input("Press Enter to continue...")
-                self._print_main_menu()
-            elif choice == '5':
-                print("Exiting...")
+            elif choice == '6':
+                return "EXIT"
+            
+            # Check if a response we sent or received triggered a game
+            if self.is_connected:
+                return "GAME_START"
+
+    def game_loop(self):
+        while self.is_connected:
+            self._clear()
+            print(f"=== Game vs {self.connected_to} ===")
+            print(f"Your Color: {self.game_color.upper()}")
+            simple_go_game.print_board(self.game_state)
+
+            if self.game_state["game_over"]:
+                print("\nGAME OVER")
+                self.end_game()
+                input("\nPress Enter to return to menu...")
                 break
+
+            if self.game_state["current_player"] == self.game_color:
+                self.type_move()
             else:
-                print("Invalid choice. Try again.")
-                self._print_main_menu()
-    
+                # Opponent's turn: Wait for network event
+                print("\nWaiting for opponent to move...")
+                self.move_received_event.wait()
+                self.move_received_event.clear()
+
+
     def handle_message(self, message):
         if message.message_type == message_type.SCORE_REQUEST:
             return self.handle_score_request()
@@ -323,11 +339,34 @@ class Node(socketserver.TCPServer):
             if sender not in self.neighbors:
                 self.neighbors.append(sender)
         elif message.message_type == message_type.START_GAME:
-            self.receive_start_game_request(message)
+            self.pending_requests.append(message)
         elif message.message_type == message_type.RESPOND_GAME:
             self.receive_start_game_response(message)
         elif message.message_type == message_type.MAKE_MOVE:
-            self.receive_move(message)
+            self.game_state = simple_go_game.handle_move(self.game_state, message.content)
+            self.move_received_event.set()
+
+    def handle_pending_requests(self):
+        """Interact with game requests stored in the queue."""
+        if not self.pending_requests:
+            print("No pending requests.")
+            input("Press Enter...")
+            return
+
+        req = self.pending_requests.pop(0)
+        resp = input(f"Accept request from {req.sent_by}? (y/n): ").strip().lower()
+        if resp == 'y':
+            color = input("Color (black/white): ").strip().lower()
+            msg = message(message_type=message_type.RESPOND_GAME, 
+                          sent_by=(self.ip_address, self.port), 
+                          content={"accepted": True, "color": color, "board_size": req.content['board_size']})
+            self.send_message(msg, req.sent_by)
+            self.start_game(req.sent_by, color, req.content['board_size'])
+        else:
+            msg = message(message_type=message_type.RESPOND_GAME, 
+                          sent_by=(self.ip_address, self.port), 
+                          content={"accepted": False})
+            self.send_message(msg, req.sent_by)
             
 if __name__ == '__main__':
     # Example of creating a node and connecting to the central hub
@@ -337,4 +376,11 @@ if __name__ == '__main__':
     print(f'Node is running on {ip}:{port}')
     server_thread = threading.Thread(target=node.serve_forever, daemon=True)
     server_thread.start()
-    node.main_loop()
+
+    while True:
+        if node.is_connected:
+            node.game_loop()
+        else:
+            status = node.main_loop()
+            if status == "EXIT":
+                break
